@@ -55,11 +55,10 @@ app.get("/api/stackoverflow", function(req, res) {
   var tag = encodeURIComponent(SO_TAG_MAP[tool]);
   var key = SO_KEY ? "&key=" + SO_KEY : "";
 
-  // Use a single simple query first to isolate the issue
-  var url = "https://api.stackexchange.com/2.3/search?order=desc&sort=relevance"
-    + "&intitle=" + encodeURIComponent("error OR issue OR problem OR slow")
+  // Use /questions endpoint filtered by tag — more reliable than /search with intitle
+  var url = "https://api.stackexchange.com/2.3/questions?order=desc&sort=votes"
     + "&tagged=" + tag
-    + "&site=stackoverflow&pagesize=10"
+    + "&site=stackoverflow&pagesize=20"
     + key;
 
   console.log("[SO] Fetching:", url);
