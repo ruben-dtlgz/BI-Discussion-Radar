@@ -1,6 +1,7 @@
 // BI Pain Point Radar — Stack Overflow Proxy Server
 const express = require("express");
 const https   = require("https");
+const zlib    = require("zlib");
 
 const app    = express();
 const PORT   = process.env.PORT || 3000;
@@ -22,22 +23,40 @@ app.use(function(req, res, next) {
   next();
 });
 
+// Fetch a URL and handle gzip decompression automatically
 function httpsGet(url) {
   return new Promise(function(resolve, reject) {
-    https.get(url, function(res) {
+    var options = {
+      headers: {
+        "Accept-Encoding": "gzip",
+        "User-Agent": "bi-pain-radar/1.0"
+      }
+    };
+
+    https.get(url, options, function(response) {
       var chunks = [];
-      res.on("data", function(chunk) { chunks.push(chunk); });
-      res.on("end", function() {
+
+      // Handle gzip decompression
+      var stream = response;
+      if (response.headers["content-encoding"] === "gzip") {
+        stream = zlib.createGunzip();
+        response.pipe(stream);
+      }
+
+      stream.on("data", function(chunk) { chunks.push(chunk); });
+      stream.on("end", function() {
         var raw = Buffer.concat(chunks).toString("utf8");
-        console.log("[SO] Raw response length:", raw.length, "status:", res.statusCode);
-        console.log("[SO] First 300 chars:", raw.slice(0, 300));
-        try { resolve(JSON.parse(raw)); }
-        catch(e) { reject(new Error("JSON parse failed: " + raw.slice(0, 200))); }
+        console.log("[SO] Status:", response.statusCode, "| Length:", raw.length, "| Encoding:", response.headers["content-encoding"] || "none");
+        try {
+          resolve(JSON.parse(raw));
+        } catch(e) {
+          console.error("[SO] JSON parse error. First 200 chars:", raw.slice(0, 200));
+          reject(new Error("JSON parse failed"));
+        }
       });
-    }).on("error", function(e) {
-      console.error("[SO] HTTPS error:", e.message);
-      reject(e);
-    });
+      stream.on("error", reject);
+
+    }).on("error", reject);
   });
 }
 
@@ -55,25 +74,22 @@ app.get("/api/stackoverflow", function(req, res) {
   var tag = encodeURIComponent(SO_TAG_MAP[tool]);
   var key = SO_KEY ? "&key=" + SO_KEY : "";
 
-  // Use /questions endpoint filtered by tag — more reliable than /search with intitle
   var url = "https://api.stackexchange.com/2.3/questions?order=desc&sort=votes"
     + "&tagged=" + tag
     + "&site=stackoverflow&pagesize=20"
     + key;
 
-  console.log("[SO] Fetching:", url);
+  console.log("[SO] Fetching for:", tool, "| Tag:", SO_TAG_MAP[tool]);
 
   httpsGet(url).then(function(data) {
-    console.log("[SO] Data keys:", Object.keys(data));
-    console.log("[SO] Items count:", data.items ? data.items.length : "no items key");
-    console.log("[SO] Error?", data.error_id, data.error_message);
-    console.log("[SO] Quota remaining:", data.quota_remaining);
-
     if (data.error_id) {
-      return res.status(500).json({ error: data.error_message, error_id: data.error_id });
+      console.error("[SO] API error:", data.error_id, data.error_message);
+      return res.status(500).json({ error: data.error_message });
     }
 
     var items = data.items || [];
+    console.log("[SO] Items returned:", items.length, "| Quota remaining:", data.quota_remaining);
+
     var slim = items.map(function(q) {
       return {
         id:                  "so-" + q.question_id,
@@ -89,11 +105,10 @@ app.get("/api/stackoverflow", function(req, res) {
       };
     });
 
-    console.log("[SO] Returning", slim.length, "items for", tool);
     res.json(slim);
 
   }).catch(function(err) {
-    console.error("[SO] Caught error:", err.message);
+    console.error("[SO] Error:", err.message);
     res.status(500).json({ error: err.message });
   });
 });
