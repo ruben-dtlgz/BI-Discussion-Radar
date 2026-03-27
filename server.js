@@ -76,20 +76,25 @@ app.get("/api/stackoverflow", function(req, res) {
   var keywords = req.query.keywords || "";
 
   // If keywords provided, use /search with intitle; otherwise use /questions by tag
+  // Filter to last 2 years for recency, sort by votes within that window
+  var twoYearsAgo = Math.floor(Date.now() / 1000) - (2 * 365 * 24 * 60 * 60);
+
   var url;
   if (keywords) {
     url = "https://api.stackexchange.com/2.3/search?order=desc&sort=relevance"
       + "&intitle=" + encodeURIComponent(keywords)
       + "&tagged=" + tag
+      + "&fromdate=" + twoYearsAgo
       + "&site=stackoverflow&pagesize=20"
       + key;
     console.log("[SO] Keyword search:", keywords, "| Tag:", SO_TAG_MAP[tool]);
   } else {
     url = "https://api.stackexchange.com/2.3/questions?order=desc&sort=votes"
       + "&tagged=" + tag
+      + "&fromdate=" + twoYearsAgo
       + "&site=stackoverflow&pagesize=20"
       + key;
-    console.log("[SO] Top questions | Tag:", SO_TAG_MAP[tool]);
+    console.log("[SO] Top recent questions | Tag:", SO_TAG_MAP[tool]);
   }
 
   httpsGet(url).then(function(data) {
