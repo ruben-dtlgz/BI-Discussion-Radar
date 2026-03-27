@@ -71,15 +71,26 @@ app.get("/api/stackoverflow", function(req, res) {
     return res.status(400).json({ error: "Unknown tool: " + tool });
   }
 
-  var tag = encodeURIComponent(SO_TAG_MAP[tool]);
-  var key = SO_KEY ? "&key=" + SO_KEY : "";
+  var tag      = encodeURIComponent(SO_TAG_MAP[tool]);
+  var key      = SO_KEY ? "&key=" + SO_KEY : "";
+  var keywords = req.query.keywords || "";
 
-  var url = "https://api.stackexchange.com/2.3/questions?order=desc&sort=votes"
-    + "&tagged=" + tag
-    + "&site=stackoverflow&pagesize=20"
-    + key;
-
-  console.log("[SO] Fetching for:", tool, "| Tag:", SO_TAG_MAP[tool]);
+  // If keywords provided, use /search with intitle; otherwise use /questions by tag
+  var url;
+  if (keywords) {
+    url = "https://api.stackexchange.com/2.3/search?order=desc&sort=relevance"
+      + "&intitle=" + encodeURIComponent(keywords)
+      + "&tagged=" + tag
+      + "&site=stackoverflow&pagesize=20"
+      + key;
+    console.log("[SO] Keyword search:", keywords, "| Tag:", SO_TAG_MAP[tool]);
+  } else {
+    url = "https://api.stackexchange.com/2.3/questions?order=desc&sort=votes"
+      + "&tagged=" + tag
+      + "&site=stackoverflow&pagesize=20"
+      + key;
+    console.log("[SO] Top questions | Tag:", SO_TAG_MAP[tool]);
+  }
 
   httpsGet(url).then(function(data) {
     if (data.error_id) {
